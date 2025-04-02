@@ -21,3 +21,4 @@ obj/
 
 # VS Code folders
 .vscode/
+/node_modules
