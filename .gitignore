@@ -1,0 +1,22 @@
+# Ignore NuGet packages
+*.nupkg
+*.dll
+*.pdb
+*.exe
+*.so
+*.dylib
+*.deb
+*.rpm
+
+# Ignore build output
+bin/
+obj/
+
+# Ignore user-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS Code folders
+.vscode/
