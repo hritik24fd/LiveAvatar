@@ -1,11 +1,16 @@
-// public/main.js
 
-// Only non-sensitive settings are fetched from /api/config
-let SPEECH_REGION, TTS_VOICE, PERSONAL_VOICE_ID, AVATAR_CHARACTER, AVATAR_STYLE;
+
+let SPEECH_REGION, SPEECH_KEY, OPENAI_ENDPOINT, OPENAI_KEY, OPENAI_DEPLOYMENT_NAME;
+let TTS_VOICE, PERSONAL_VOICE_ID, AVATAR_CHARACTER, AVATAR_STYLE;
+
 fetch('/api/config')
     .then(response => response.json())
     .then(config => {
         SPEECH_REGION = config.SPEECH_REGION;
+        SPEECH_KEY = config.SPEECH_KEY;
+        OPENAI_ENDPOINT = config.OPENAI_ENDPOINT;
+        OPENAI_KEY = config.OPENAI_KEY;
+        OPENAI_DEPLOYMENT_NAME = config.OPENAI_DEPLOYMENT_NAME;
         TTS_VOICE = config.TTS_VOICE;
         PERSONAL_VOICE_ID = config.PERSONAL_VOICE_ID;
         AVATAR_CHARACTER = config.AVATAR_CHARACTER;
@@ -86,35 +91,44 @@ function initializeApp() {
     }
 
     function connectAvatar() {
-        // Retrieve tokens and ICE credentials from the secure endpoint
-        fetch('/api/azure-token')
+        if (!SPEECH_KEY) {
+            console.error("Speech Key missing!");
+            return;
+        }
+        if (!OPENAI_KEY) {
+            console.error("OpenAI Key missing!");
+            return;
+        }
+
+        const speechSynthesisConfig = SpeechSDK.SpeechConfig.fromSubscription(SPEECH_KEY, SPEECH_REGION);
+        const avatarConfig = new SpeechSDK.AvatarConfig(AVATAR_CHARACTER, AVATAR_STYLE);
+        avatarConfig.customized = false;
+        avatarSynthesizer = new SpeechSDK.AvatarSynthesizer(speechSynthesisConfig, avatarConfig);
+
+        avatarSynthesizer.avatarEventReceived = (s, e) => {
+            console.log("Avatar event: " + e.description + ", offset: " + e.offset);
+        };
+
+        const speechRecognitionConfig = SpeechSDK.SpeechConfig.fromSubscription(SPEECH_KEY, SPEECH_REGION);
+        speechRecognitionConfig.setProperty(
+            SpeechSDK.PropertyId.SpeechServiceConnection_LanguageIdMode,
+            "Continuous"
+        );
+        const autoDetectLangConfig = SpeechSDK.AutoDetectSourceLanguageConfig.fromLanguages(["en-US"]);
+        speechRecognizer = SpeechSDK.SpeechRecognizer.FromConfig(
+            speechRecognitionConfig,
+            autoDetectLangConfig,
+            SpeechSDK.AudioConfig.fromDefaultMicrophoneInput()
+        );
+
+        const tokenUrl = `https://${SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/avatar/relay/token/v1`;
+        fetch(tokenUrl, {
+            method: 'GET',
+            headers: { 'Ocp-Apim-Subscription-Key': SPEECH_KEY }
+        })
             .then(response => response.json())
-            .then(tokenData => {
-                // Create Speech SDK configurations using the authorization token
-                const speechSynthesisConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(tokenData.authToken, SPEECH_REGION);
-                const avatarConfig = new SpeechSDK.AvatarConfig(AVATAR_CHARACTER, AVATAR_STYLE);
-                avatarConfig.customized = false;
-                avatarSynthesizer = new SpeechSDK.AvatarSynthesizer(speechSynthesisConfig, avatarConfig);
-
-                avatarSynthesizer.avatarEventReceived = (s, e) => {
-                    console.log("Avatar event: " + e.description + ", offset: " + e.offset);
-                };
-
-                // Set up speech recognition configuration similarly using the token
-                const speechRecognitionConfig = SpeechSDK.SpeechConfig.fromAuthorizationToken(tokenData.authToken, SPEECH_REGION);
-                speechRecognitionConfig.setProperty(
-                    SpeechSDK.PropertyId.SpeechServiceConnection_LanguageIdMode,
-                    "Continuous"
-                );
-                const autoDetectLangConfig = SpeechSDK.AutoDetectSourceLanguageConfig.fromLanguages(["en-US"]);
-                speechRecognizer = SpeechSDK.SpeechRecognizer.FromConfig(
-                    speechRecognitionConfig,
-                    autoDetectLangConfig,
-                    SpeechSDK.AudioConfig.fromDefaultMicrophoneInput()
-                );
-
-                // Use ICE credentials for setting up WebRTC
-                setupWebRTC(tokenData.iceUrl, tokenData.username, tokenData.password);
+            .then(data => {
+                setupWebRTC(data.Urls[0], data.Username, data.Password);
             })
             .catch(error => {
                 console.error("Error retrieving token: ", error);
@@ -275,13 +289,14 @@ function initializeApp() {
 
         if (isSpeaking) stopSpeaking();
 
-        // Use our secure OpenAI proxy endpoint
-        const url = `/api/openai-chat`;
+        const url = `${OPENAI_ENDPOINT}openai/deployments/${OPENAI_DEPLOYMENT_NAME}/chat/completions?api-version=2023-06-01-preview`;
         const body = JSON.stringify({ messages, stream: true });
+
         let assistantReply = "";
         fetch(url, {
             method: "POST",
             headers: {
+                "api-key": OPENAI_KEY,
                 "Content-Type": "application/json"
             },
             body
@@ -389,7 +404,7 @@ function initializeApp() {
         messages = [];
         messages.push({
             role: 'system',
-            content: "You are a voice assistant; limit replies to 25 words. Do not speak emojis or special characters."
+            content: "You are a voice assistant named as Rosy; limit replies to 25 words. Do not speak emojis or special characters."
         });
     }
 
