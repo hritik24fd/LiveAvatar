@@ -404,7 +404,7 @@ function initializeApp() {
         messages = [];
         messages.push({
             role: 'system',
-            content: "You are a voice assistant named as Rosy; limit replies to 25 words. Do not speak emojis or special characters."
+            content: "You are a voice assistant; limit replies to 25 words. Do not speak emojis or special characters."
         });
     }
 
